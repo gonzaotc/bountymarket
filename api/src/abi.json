@@ -80,6 +80,11 @@
         "name": "amount",
         "type": "uint256",
         "internalType": "uint256"
+      },
+      {
+        "name": "beneficiary",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [],
@@ -98,6 +103,11 @@
         "name": "amount",
         "type": "uint256",
         "internalType": "uint256"
+      },
+      {
+        "name": "beneficiary",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [],
@@ -352,6 +362,11 @@
         "name": "campaignId",
         "type": "uint256",
         "internalType": "uint256"
+      },
+      {
+        "name": "beneficiary",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [

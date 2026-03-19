@@ -1,8 +1,21 @@
 import { Hono } from 'hono'
+import { Credential } from 'mppx'
 import { mppx } from '../lib/mppx'
-import { getCampaign, getIssue, submitIssue, buyYes, buyNo, resolveIssue, account } from '../lib/chain'
+import { getCampaign, getIssue, submitIssue, buyYes, buyNo, account } from '../lib/chain'
 
 const app = new Hono()
+
+// Extracts the payer's EVM address from the MPP credential DID.
+// Credential.source format: "did:pkh:eip155:4217:0xAddress"
+// Falls back to the server wallet if no source is present.
+function payerAddress(req: Request): `0x${string}` {
+  try {
+    const credential = Credential.fromRequest(req)
+    const address = credential.source?.split(':').pop()
+    if (address?.startsWith('0x')) return address as `0x${string}`
+  } catch {}
+  return account.address
+}
 
 // GET /issues/:id — free
 app.get('/:id', async (c) => {
@@ -27,20 +40,22 @@ app.post(
     const body = await c.req.json()
     const campaignId = BigInt(body.campaignId ?? '0')
     const campaign = await getCampaign(campaignId)
-    const feeUsdc = (Number(campaign[2]) / 1e6).toFixed(6) // submissionFee
+    const feeUsdc = (Number(campaign[2]) / 1e6).toFixed(6)
 
     return mppx.charge({ amount: feeUsdc, description: `Submit issue for campaign ${campaignId}` })(c.req.raw).then(
       async (result) => {
         if (result.status === 402) return result.challenge
         c.set('mppResult', result)
         c.set('campaignId', campaignId)
+        c.set('payer', payerAddress(c.req.raw))
         await next()
       },
     )
   },
   async (c) => {
     const campaignId: bigint = c.get('campaignId')
-    const receipt = await submitIssue(campaignId)
+    const payer: `0x${string}` = c.get('payer')
+    const receipt = await submitIssue(campaignId, payer)
 
     const event = receipt.logs[0]
     const issueId = BigInt(event.topics[1] ?? '0x0')
@@ -66,6 +81,7 @@ app.post(
         if (result.status === 402) return result.challenge
         c.set('mppResult', result)
         c.set('amount', amount)
+        c.set('payer', payerAddress(c.req.raw))
         await next()
       },
     )
@@ -73,7 +89,8 @@ app.post(
   async (c) => {
     const issueId = BigInt(c.req.param('id'))
     const amount: bigint = c.get('amount')
-    const receipt = await buyYes(issueId, amount)
+    const payer: `0x${string}` = c.get('payer')
+    const receipt = await buyYes(issueId, amount, payer)
 
     const mppResult = c.get('mppResult') as any
     return mppResult.withReceipt(
@@ -96,6 +113,7 @@ app.post(
         if (result.status === 402) return result.challenge
         c.set('mppResult', result)
         c.set('amount', amount)
+        c.set('payer', payerAddress(c.req.raw))
         await next()
       },
     )
@@ -103,7 +121,8 @@ app.post(
   async (c) => {
     const issueId = BigInt(c.req.param('id'))
     const amount: bigint = c.get('amount')
-    const receipt = await buyNo(issueId, amount)
+    const payer: `0x${string}` = c.get('payer')
+    const receipt = await buyNo(issueId, amount, payer)
 
     const mppResult = c.get('mppResult') as any
     return mppResult.withReceipt(
@@ -111,19 +130,5 @@ app.post(
     )
   },
 )
-
-// POST /issues/:id/resolve — admin only, no payment
-// Body: { valid: boolean, adminKey: string }
-app.post('/:id/resolve', async (c) => {
-  const body = await c.req.json()
-  if (body.adminKey !== process.env.ADMIN_KEY) {
-    return c.json({ error: 'unauthorized' }, 401)
-  }
-
-  const issueId = BigInt(c.req.param('id'))
-  const receipt = await resolveIssue(issueId, body.valid)
-
-  return c.json({ issueId: issueId.toString(), valid: body.valid, tx: receipt.transactionHash })
-})
 
 export default app

@@ -8,14 +8,14 @@ app.get('/', (c) =>
   c.json({
     name: 'BountyMarket API',
     description: 'Pay-to-submit bug bounty platform with prediction markets on issue validity.',
+    note: 'Companies interact with the contract directly. This API is the MPP payment gateway for reporters and traders.',
+    contract: '0x22a92a5dcd841caeb167b69c0dd8debdde6e4c40',
     endpoints: {
       'GET  /campaigns/:id': 'Get campaign details (free)',
-      'POST /campaigns': 'Create campaign — MPP payment = prize pool',
-      'GET  /issues/:id': 'Get issue + market state (free)',
-      'POST /issues': 'Submit issue — MPP payment = submission fee F',
-      'POST /issues/:id/yes': 'Buy YES position — MPP payment = bet amount',
+      'GET  /issues/:id':    'Get issue + market state (free)',
+      'POST /issues':        'Submit issue — MPP payment = submission fee F',
+      'POST /issues/:id/yes':'Buy YES position — MPP payment = bet amount',
       'POST /issues/:id/no': 'Buy NO position — MPP payment = bet amount',
-      'POST /issues/:id/resolve': 'Resolve issue (admin only)',
     },
   }),
 )

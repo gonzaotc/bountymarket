@@ -156,7 +156,8 @@ contract BountyMarket is ReentrancyGuard {
     // -------------------------------------------------------------------------
 
     /// @notice Submit an issue. Pays fee F, which becomes reporter's YES position.
-    function submitIssue(uint256 campaignId) external nonReentrant returns (uint256 issueId) {
+    /// @param beneficiary  Address credited with the reporter position (e.g. the actual user when called via relayer).
+    function submitIssue(uint256 campaignId, address beneficiary) external nonReentrant returns (uint256 issueId) {
         Campaign storage campaign = campaigns[campaignId];
         require(campaign.active, "campaign inactive");
 
@@ -165,16 +166,16 @@ contract BountyMarket is ReentrancyGuard {
         issueId = nextIssueId++;
         issues[issueId] = Issue({
             campaignId: campaignId,
-            reporter: msg.sender,
+            reporter: beneficiary,
             yesPool: campaign.submissionFee,
             noPool: 0,
             resolved: false,
             valid: false
         });
 
-        yesShares[issueId][msg.sender] = campaign.submissionFee;
+        yesShares[issueId][beneficiary] = campaign.submissionFee;
 
-        emit IssueSubmitted(issueId, campaignId, msg.sender);
+        emit IssueSubmitted(issueId, campaignId, beneficiary);
     }
 
     // -------------------------------------------------------------------------
@@ -182,7 +183,8 @@ contract BountyMarket is ReentrancyGuard {
     // -------------------------------------------------------------------------
 
     /// @notice Buy YES (bet the issue is valid).
-    function buyYes(uint256 issueId, uint256 amount) external nonReentrant {
+    /// @param beneficiary  Address credited with the YES position.
+    function buyYes(uint256 issueId, uint256 amount, address beneficiary) external nonReentrant {
         Issue storage issue = issues[issueId];
         require(!issue.resolved, "resolved");
         require(amount > 0, "zero amount");
@@ -190,13 +192,14 @@ contract BountyMarket is ReentrancyGuard {
         usdc.safeTransferFrom(msg.sender, address(this), amount);
 
         issue.yesPool += amount;
-        yesShares[issueId][msg.sender] += amount;
+        yesShares[issueId][beneficiary] += amount;
 
-        emit YesBought(issueId, msg.sender, amount);
+        emit YesBought(issueId, beneficiary, amount);
     }
 
     /// @notice Buy NO (bet the issue is invalid).
-    function buyNo(uint256 issueId, uint256 amount) external nonReentrant {
+    /// @param beneficiary  Address credited with the NO position.
+    function buyNo(uint256 issueId, uint256 amount, address beneficiary) external nonReentrant {
         Issue storage issue = issues[issueId];
         require(!issue.resolved, "resolved");
         require(amount > 0, "zero amount");
@@ -204,9 +207,9 @@ contract BountyMarket is ReentrancyGuard {
         usdc.safeTransferFrom(msg.sender, address(this), amount);
 
         issue.noPool += amount;
-        noShares[issueId][msg.sender] += amount;
+        noShares[issueId][beneficiary] += amount;
 
-        emit NoBought(issueId, msg.sender, amount);
+        emit NoBought(issueId, beneficiary, amount);
     }
 
     // -------------------------------------------------------------------------
