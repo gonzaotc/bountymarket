@@ -49,7 +49,11 @@ BountyMarket.sol  (Tempo Mainnet — holds all USDC)
 
 **MPP API**: pay via Tempo/USDC over HTTP 402. The server relays to the contract with your wallet as beneficiary — non-custodial. You claim directly.
 
-**Deployed:** `0x0Abb6362735a87a9b940Bcd2b7a35ead9927E92d` on Tempo Mainnet
+**Contract:** `0x0Abb6362735a87a9b940Bcd2b7a35ead9927E92d` on Tempo Mainnet · [verified on Sourcify](https://sourcify.dev/#/lookup/0x0Abb6362735a87a9b940Bcd2b7a35ead9927E92d)
+
+**Explorer:** [bountymarket.vercel.app](https://bountymarket.vercel.app)
+
+**API:** [bountymarket.up.railway.app](https://bountymarket.up.railway.app)
 
 ---
 
@@ -78,4 +82,4 @@ bun run --cwd api dev
 | Chain | Tempo Mainnet (chain ID 4217) |
 
 FE: https://bountymarket.vercel.app/
-BE: bountymarket-production.up.railway.app
+BE: https://bountymarket-production.up.railway.app/
