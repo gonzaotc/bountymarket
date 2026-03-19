@@ -82,4 +82,4 @@ bun run --cwd api dev
 | Chain | Tempo Mainnet (chain ID 4217) |
 
 FE: https://bountymarket.vercel.app/
-BE: https://bountymarket-production.up.railway.app/
+BE: bountymarket.up.railway.app/
