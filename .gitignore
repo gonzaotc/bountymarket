@@ -1,0 +1,24 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Claude context (personal)
+CLAUDE.md
+.claude/
+
+# Forge artifacts
+out/
+cache/
+broadcast/
+
+# Foundry deps (installed via forge install)
+lib/
+
+# Node / Bun
+node_modules/
+api/node_modules/
+bun.lockb
+
+# macOS
+.DS_Store
