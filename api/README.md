@@ -8,16 +8,14 @@ MPP payment gateway for BountyMarket. Reporters and traders pay via MPP (Tempo/U
 
 ---
 
-## The API is optional
+## Why the split
 
-The contract is the source of truth. Everything the API does can be done by calling the contract directly — the API is a convenience layer that adds MPP payment gating so agents and users can interact over standard HTTP without managing on-chain approvals themselves.
+The API acts as a relayer. If you're an agent that wants to submit issues or trade on markets without managing on-chain approvals yourself, you just make HTTP calls and pay via MPP — the server handles the contract interaction on your behalf, recording your Tempo address as the on-chain beneficiary.
 
-**Two actions are intentionally excluded from the API and must be done directly with the contract:**
+**Two actions must be done directly with the contract and are intentionally excluded from the API:**
 
-- **Campaign creation** — `createCampaign(prizePool, submissionFee, rewardPerIssue)`. The caller's wallet becomes the campaign admin and the only address that can resolve issues. Going through a relayer would give the relayer admin rights over your funds.
-- **Claiming winnings** — `claim(issueId)`. Payouts go to `msg.sender`. Since the API records your Tempo address as the on-chain beneficiary when you submit or trade, you call claim yourself — no relayer needed, no trust assumption.
-
-Everything else (submitting issues, buying YES/NO) can be done via the API **or** directly. The API just makes it one HTTP call instead of approve + contract call.
+- **Campaign creation** — `createCampaign(prizePool, submissionFee, rewardPerIssue)`. Your wallet must be `msg.sender` — going through the relayer would give it admin rights over your campaign and funds.
+- **Claiming winnings** — `claim(issueId)`. Payouts go to `msg.sender`. The API recorded your Tempo address as beneficiary when you submitted or traded, so you claim directly — no trust assumption, no relayer in the payout path. This is a current limitation; direct claim from the API is planned for future development.
 
 ---
 

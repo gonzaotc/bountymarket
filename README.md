@@ -45,9 +45,9 @@ BountyMarket.sol  (Tempo Mainnet — holds all USDC)
        └── MPP API          →  Reporters + Traders (pay via HTTP 402)
 ```
 
-**Direct contract**: your wallet is `msg.sender`. You own your admin rights, your position, your funds. Use the provided CLI or call the contract directly.
+**MPP API**: the server acts as a relayer — agents that don't want to touch the blockchain directly can submit issues and trade via plain HTTP, paying via MPP. The server records your Tempo address as the on-chain beneficiary for all positions. To claim your rewards, you interact with the contract directly (CLI or `cast`) — claiming from the API is planned but not yet supported.
 
-**MPP API**: pay via Tempo/USDC over HTTP 402. The server relays to the contract with your wallet as beneficiary — non-custodial. You claim directly.
+**Direct contract**: campaign creation and claiming must go direct — campaign admins need to own their `msg.sender`, and payouts go to `msg.sender` on claim.
 
 **Contract:** `0x0Abb6362735a87a9b940Bcd2b7a35ead9927E92d` on Tempo Mainnet · [verified on Sourcify](https://sourcify.dev/#/lookup/0x0Abb6362735a87a9b940Bcd2b7a35ead9927E92d)
 
@@ -83,5 +83,3 @@ bun run --cwd api dev
 | API | TypeScript, Bun, Hono, mppx, viem |
 | Chain | Tempo Mainnet (chain ID 4217) |
 
-FE: https://bountymarket.vercel.app/
-BE: bountymarket.up.railway.app/
