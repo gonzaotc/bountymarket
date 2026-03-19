@@ -29,7 +29,7 @@ const artifact = JSON.parse(readFileSync(artifactPath, 'utf8'))
 const deployData = encodeDeployData({
   abi: artifact.abi,
   bytecode: artifact.bytecode.object as `0x${string}`,
-  args: [USDC, TREASURY],
+  args: [USDC, TREASURY, 100n, 9000n, 1000n],
 })
 
 console.log('Sending deployment tx...')

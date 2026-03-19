@@ -35,13 +35,46 @@ contract BountyMarketTest is Test {
 
     function setUp() public {
         usdc = new MockUSDC();
-        market = new BountyMarket(address(usdc), treasury);
+        market = new BountyMarket(address(usdc), treasury, 100, 9000, 1000);
 
         // Fund all actors
         usdc.mint(company,   PRIZE_POOL + PROTOCOL_FEE + 1e6);
         usdc.mint(reporter,  SUBMISSION_FEE);
         usdc.mint(yesBuyer,  YES_BET);
         usdc.mint(noBuyer,   NO_BET);
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    function _createCampaign() internal {
+        uint256 total = PRIZE_POOL + PROTOCOL_FEE;
+        vm.startPrank(company);
+        usdc.approve(address(market), total);
+        campaignId = market.createCampaign(PRIZE_POOL, SUBMISSION_FEE, REWARD_PER_ISSUE);
+        vm.stopPrank();
+    }
+
+    function _submitIssue() internal {
+        vm.startPrank(reporter);
+        usdc.approve(address(market), SUBMISSION_FEE);
+        issueId = market.submitIssue(campaignId, reporter);
+        vm.stopPrank();
+    }
+
+    function _buyYes() internal {
+        vm.startPrank(yesBuyer);
+        usdc.approve(address(market), YES_BET);
+        market.buyYes(issueId, YES_BET, yesBuyer);
+        vm.stopPrank();
+    }
+
+    function _buyNo() internal {
+        vm.startPrank(noBuyer);
+        usdc.approve(address(market), NO_BET);
+        market.buyNo(issueId, NO_BET, noBuyer);
+        vm.stopPrank();
     }
 
     // -------------------------------------------------------------------------
@@ -148,39 +181,21 @@ contract BountyMarketTest is Test {
         assertEq(remainingPool, PRIZE_POOL - REWARD_PER_ISSUE);
         console.log("remaining prizePool: ", remainingPool); // 500
 
-        // Preview payouts
-        // R = 500, yesPool = 60, noPool = 30
-        // yesPoolPrize = 10% of 500 + 30 = 50 + 30 = 80
-        // reporter: shares=10, total yesPool=60 → marketPayout = 80*10/60 = 13.33
-        //           + reporterBonus = 90% of 500 = 450
-        //           total = ~463.33
-        // yesBuyer: shares=50, total yesPool=60 → marketPayout = 80*50/60 = 66.66
-        uint256 reporterPayout = market.previewClaim(issueId, reporter);
-        uint256 yesBuyerPayout = market.previewClaim(issueId, yesBuyer);
-        uint256 noBuyerPayout  = market.previewClaim(issueId, noBuyer);
+        // R=500, yesPool=60 (10 fee + 50 YES), noPool=30
+        // yesPoolPrize = 10% of 500 + 30 = 80
+        // reporter:  80 * 10/60 + 90% of 500 = 13_333_333 + 450_000_000 = 463_333_333
+        // yesBuyer:  80 * 50/60                                          =  66_666_666
+        // noBuyer:   0 (lost)
+        assertEq(market.previewClaim(issueId, reporter), 463_333_333);
+        assertEq(market.previewClaim(issueId, yesBuyer),  66_666_666);
+        assertEq(market.previewClaim(issueId, noBuyer),            0);
 
-        console.log("=== Payouts ===");
-        console.log("reporter payout:  ", reporterPayout);
-        console.log("yesBuyer payout:  ", yesBuyerPayout);
-        console.log("noBuyer payout:   ", noBuyerPayout); // should be 0
+        vm.prank(reporter);  market.claim(issueId);
+        vm.prank(yesBuyer);  market.claim(issueId);
 
-        assertEq(noBuyerPayout, 0); // NO buyers lose on valid
-
-        // Claim
-        vm.prank(reporter);
-        market.claim(issueId);
-
-        vm.prank(yesBuyer);
-        market.claim(issueId);
-
-        console.log("=== Balances After Claim ===");
-        console.log("reporter balance:  ", usdc.balanceOf(reporter));
-        console.log("yesBuyer balance:  ", usdc.balanceOf(yesBuyer));
-        console.log("noBuyer balance:   ", usdc.balanceOf(noBuyer));
-
-        assertEq(usdc.balanceOf(reporter), reporterPayout);
-        assertEq(usdc.balanceOf(yesBuyer), yesBuyerPayout);
-        assertEq(usdc.balanceOf(noBuyer), 0); // lost their bet
+        assertEq(usdc.balanceOf(reporter), 463_333_333);
+        assertEq(usdc.balanceOf(yesBuyer),  66_666_666);
+        assertEq(usdc.balanceOf(noBuyer),            0);
 
         // Double claim fails
         vm.prank(reporter);
@@ -210,27 +225,17 @@ contract BountyMarketTest is Test {
         assertEq(remainingPool, PRIZE_POOL);
         console.log("remaining prizePool: ", remainingPool); // still 1000
 
-        // NO buyers win the entire YES pool pro-rata
-        // yesPool = 60, noPool = 30, noBuyer has all 30 noShares
-        // noBuyer payout = 60 * 30 / 30 = 60
-        uint256 noBuyerPayout   = market.previewClaim(issueId, noBuyer);
-        uint256 reporterPayout  = market.previewClaim(issueId, reporter);
-        uint256 yesBuyerPayout  = market.previewClaim(issueId, yesBuyer);
-
-        console.log("=== Payouts ===");
-        console.log("noBuyer payout:  ", noBuyerPayout);  // 60
-        console.log("reporter payout: ", reporterPayout); // 0
-        console.log("yesBuyer payout: ", yesBuyerPayout); // 0
-
-        assertEq(noBuyerPayout, yesPool); // wins the whole YES pool
-        assertEq(reporterPayout, 0);
-        assertEq(yesBuyerPayout, 0);
+        // yesPool=60, noPool=30, noBuyer holds all 30 noShares
+        // noBuyer: 60 * 30/30 = 60_000_000  ($60 from $30 bet — 2x)
+        // reporter + yesBuyer: 0 (lost)
+        assertEq(market.previewClaim(issueId, noBuyer),   60_000_000);
+        assertEq(market.previewClaim(issueId, reporter),           0);
+        assertEq(market.previewClaim(issueId, yesBuyer),           0);
 
         vm.prank(noBuyer);
         market.claim(issueId);
 
-        console.log("noBuyer final balance: ", usdc.balanceOf(noBuyer));
-        assertEq(usdc.balanceOf(noBuyer), yesPool); // $60 from $30 bet
+        assertEq(usdc.balanceOf(noBuyer), 60_000_000);
     }
 
     // -------------------------------------------------------------------------
@@ -242,7 +247,7 @@ contract BountyMarketTest is Test {
         _submitIssue();
 
         vm.prank(reporter);
-        vm.expectRevert("not admin");
+        vm.expectRevert("not campaign admin");
         market.resolve(issueId, true);
     }
 
@@ -302,38 +307,5 @@ contract BountyMarketTest is Test {
         vm.prank(company);
         vm.expectRevert("pool exhausted");
         market.resolve(id3, true);
-    }
-
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
-
-    function _createCampaign() internal {
-        uint256 total = PRIZE_POOL + PROTOCOL_FEE;
-        vm.startPrank(company);
-        usdc.approve(address(market), total);
-        campaignId = market.createCampaign(PRIZE_POOL, SUBMISSION_FEE, REWARD_PER_ISSUE);
-        vm.stopPrank();
-    }
-
-    function _submitIssue() internal {
-        vm.startPrank(reporter);
-        usdc.approve(address(market), SUBMISSION_FEE);
-        issueId = market.submitIssue(campaignId, reporter);
-        vm.stopPrank();
-    }
-
-    function _buyYes() internal {
-        vm.startPrank(yesBuyer);
-        usdc.approve(address(market), YES_BET);
-        market.buyYes(issueId, YES_BET, yesBuyer);
-        vm.stopPrank();
-    }
-
-    function _buyNo() internal {
-        vm.startPrank(noBuyer);
-        usdc.approve(address(market), NO_BET);
-        market.buyNo(issueId, NO_BET, noBuyer);
-        vm.stopPrank();
     }
 }

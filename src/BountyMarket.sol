@@ -32,10 +32,15 @@ contract BountyMarket is ReentrancyGuard {
     // Constants
     // -------------------------------------------------------------------------
 
-    uint256 public constant PROTOCOL_FEE_BPS = 100; // 1%
-    uint256 public constant REPORTER_SHARE_BPS = 9000; // 90% of R to reporter
-    uint256 public constant YES_POOL_SHARE_BPS = 1000; // 10% of R to YES pool
     uint256 public constant BPS = 10_000;
+
+    // -------------------------------------------------------------------------
+    // Immutables
+    // -------------------------------------------------------------------------
+
+    uint256 public immutable PROTOCOL_FEE_BPS;  // e.g. 100 = 1%
+    uint256 public immutable REPORTER_SHARE_BPS; // e.g. 9000 = 90% of R to reporter
+    uint256 public immutable YES_POOL_SHARE_BPS; // e.g. 1000 = 10% of R to YES pool
 
     // -------------------------------------------------------------------------
     // Storage
@@ -86,22 +91,58 @@ contract BountyMarket is ReentrancyGuard {
     event Claimed(uint256 indexed issueId, address indexed account, uint256 amount);
 
     // -------------------------------------------------------------------------
+    // Modifiers
+    // -------------------------------------------------------------------------
+
+    modifier onlyCampaignAdmin(uint256 campaignId) {
+        require(msg.sender == campaigns[campaignId].admin, "not campaign admin");
+        _;
+    }
+
+    modifier onlyIssueAdmin(uint256 issueId) {
+        require(msg.sender == campaigns[issues[issueId].campaignId].admin, "not campaign admin");
+        _;
+    }
+
+    // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
 
-    constructor(address _usdc, address _treasury) {
+    /// @notice Deploy BountyMarket with configurable fee and reward splits.
+    /// @param _usdc             ERC20 token used for all payments (USDC).
+    /// @param _treasury         Address that receives the protocol fee on campaign creation.
+    /// @param _protocolFeeBps   Fee charged on prize pool at campaign creation, in BPS (e.g. 100 = 1%).
+    /// @param _reporterShareBps Share of rewardPerIssue paid directly to the reporter on valid resolution, in BPS.
+    /// @param _yesPoolShareBps  Share of rewardPerIssue distributed pro-rata to all YES holders on valid resolution, in BPS.
+    ///                          Must satisfy: _reporterShareBps + _yesPoolShareBps == 10_000.
+    constructor(
+        address _usdc,
+        address _treasury,
+        uint256 _protocolFeeBps,
+        uint256 _reporterShareBps,
+        uint256 _yesPoolShareBps
+    ) {
+        require(_protocolFeeBps <= BPS, "fee too high");
+        require(_reporterShareBps + _yesPoolShareBps == BPS, "shares must sum to 100%");
         usdc = IERC20(_usdc);
         treasury = _treasury;
+        PROTOCOL_FEE_BPS = _protocolFeeBps;
+        REPORTER_SHARE_BPS = _reporterShareBps;
+        YES_POOL_SHARE_BPS = _yesPoolShareBps;
     }
 
     // -------------------------------------------------------------------------
     // Company actions
     // -------------------------------------------------------------------------
 
-    /// @notice Create a campaign by locking a prize pool.
-    /// @param prizePool  Total USDC locked for paying out valid issues.
-    /// @param submissionFee  Fee (F) reporters must pay to submit an issue.
-    /// @param rewardPerIssue Fixed reward (R) paid from pool per valid issue. Must be <= prizePool.
+    /// @notice Create a bounty campaign and lock the prize pool.
+    /// @dev    Caller pays prizePool + protocolFee upfront. The protocol fee is forwarded
+    ///         to treasury immediately; the prize pool is held in the contract until issues
+    ///         are resolved or the admin withdraws it. Caller becomes the campaign admin.
+    /// @param prizePool      Total USDC locked for paying out valid issues.
+    /// @param submissionFee  Fee (F) reporters must pay to submit an issue. Becomes their YES position.
+    /// @param rewardPerIssue Fixed reward (R) deducted from the pool per valid resolution. Must be <= prizePool.
+    /// @return id            The new campaign ID.
     function createCampaign(
         uint256 prizePool,
         uint256 submissionFee,
@@ -129,14 +170,16 @@ contract BountyMarket is ReentrancyGuard {
         emit CampaignCreated(id, msg.sender, prizePool, submissionFee, rewardPerIssue);
     }
 
-    /// @notice Resolve an issue. Only callable by the campaign admin.
-    /// @param issueId  Issue to resolve.
-    /// @param valid    True if the issue is a valid bug report.
-    function resolve(uint256 issueId, bool valid) external {
+    /// @notice Resolve an issue as valid or invalid. Only callable by the campaign admin.
+    /// @dev    Valid: deducts rewardPerIssue from the prize pool; reporter and YES holders
+    ///         can claim their share. Invalid: prize pool is untouched; NO holders claim
+    ///         the entire YES pool. Cannot be called if the campaign has been deactivated.
+    /// @param issueId  ID of the issue to resolve.
+    /// @param valid    True if the issue is a confirmed valid bug report.
+    function resolve(uint256 issueId, bool valid) external onlyIssueAdmin(issueId) {
         Issue storage issue = issues[issueId];
         Campaign storage campaign = campaigns[issue.campaignId];
 
-        require(msg.sender == campaign.admin, "not admin");
         require(!issue.resolved, "already resolved");
         require(campaign.active, "campaign inactive");
 
@@ -151,12 +194,33 @@ contract BountyMarket is ReentrancyGuard {
         emit IssueResolved(issueId, valid);
     }
 
+    /// @notice Withdraw the remaining prize pool and close the campaign.
+    /// @dev    Sets active=false so no new issues can be submitted. Issues already submitted
+    ///         can still be resolved and claimed normally — only the pool funding them is gone,
+    ///         so valid resolutions will revert with "pool exhausted" if the pool runs dry.
+    ///         Use this to wind down a campaign or recover unused funds.
+    /// @param campaignId  ID of the campaign to close.
+    function withdrawPool(uint256 campaignId) external onlyCampaignAdmin(campaignId) nonReentrant {
+        Campaign storage campaign = campaigns[campaignId];
+        uint256 amount = campaign.prizePool;
+        require(amount > 0, "nothing to withdraw");
+
+        campaign.prizePool = 0;
+        campaign.active = false;
+
+        usdc.safeTransfer(msg.sender, amount);
+    }
+
     // -------------------------------------------------------------------------
     // Reporter actions
     // -------------------------------------------------------------------------
 
-    /// @notice Submit an issue. Pays fee F, which becomes reporter's YES position.
-    /// @param beneficiary  Address credited with the reporter position (e.g. the actual user when called via relayer).
+    /// @notice Submit a bug report to a campaign. The submission fee becomes the reporter's YES position.
+    /// @dev    msg.sender pays the fee (typically the MPP relayer). `beneficiary` is recorded as the
+    ///         reporter on-chain and credited with the YES shares, enabling non-custodial claiming.
+    /// @param campaignId   ID of the campaign to submit against.
+    /// @param beneficiary  Address credited as reporter and YES position holder.
+    /// @return issueId     The new issue ID.
     function submitIssue(uint256 campaignId, address beneficiary) external nonReentrant returns (uint256 issueId) {
         Campaign storage campaign = campaigns[campaignId];
         require(campaign.active, "campaign inactive");
@@ -182,7 +246,12 @@ contract BountyMarket is ReentrancyGuard {
     // Market actions
     // -------------------------------------------------------------------------
 
-    /// @notice Buy YES (bet the issue is valid).
+    /// @notice Buy a YES position — bet that the issue is a valid bug report.
+    /// @dev    msg.sender pays (typically the MPP relayer). `beneficiary` is credited with the
+    ///         shares on-chain. On valid resolution, YES holders share (YES_POOL_SHARE_BPS% of R + noPool)
+    ///         pro-rata by their share of yesPool.
+    /// @param issueId      ID of the issue to bet on.
+    /// @param amount       USDC amount to stake (raw units, 6 decimals).
     /// @param beneficiary  Address credited with the YES position.
     function buyYes(uint256 issueId, uint256 amount, address beneficiary) external nonReentrant {
         Issue storage issue = issues[issueId];
@@ -197,7 +266,12 @@ contract BountyMarket is ReentrancyGuard {
         emit YesBought(issueId, beneficiary, amount);
     }
 
-    /// @notice Buy NO (bet the issue is invalid).
+    /// @notice Buy a NO position — bet that the issue is invalid (spam, duplicate, out-of-scope).
+    /// @dev    msg.sender pays (typically the MPP relayer). `beneficiary` is credited with the
+    ///         shares on-chain. On invalid resolution, NO holders split the entire YES pool
+    ///         pro-rata by their share of noPool.
+    /// @param issueId      ID of the issue to bet against.
+    /// @param amount       USDC amount to stake (raw units, 6 decimals).
     /// @param beneficiary  Address credited with the NO position.
     function buyNo(uint256 issueId, uint256 amount, address beneficiary) external nonReentrant {
         Issue storage issue = issues[issueId];
@@ -216,7 +290,10 @@ contract BountyMarket is ReentrancyGuard {
     // Claim
     // -------------------------------------------------------------------------
 
-    /// @notice Pull winnings after resolution.
+    /// @notice Claim winnings after an issue has been resolved.
+    /// @dev    Computes msg.sender's payout based on their shares and the resolution outcome,
+    ///         marks them as claimed, and transfers USDC. Reverts if nothing is owed.
+    /// @param issueId  ID of the resolved issue to claim from.
     function claim(uint256 issueId) external nonReentrant {
         Issue storage issue = issues[issueId];
         require(issue.resolved, "not resolved");
@@ -232,7 +309,11 @@ contract BountyMarket is ReentrancyGuard {
         emit Claimed(issueId, msg.sender, payout);
     }
 
-    /// @notice Preview payout for an account (view, no state change).
+    /// @notice Preview the claimable payout for an account without executing a claim.
+    /// @dev    Returns 0 if the issue is unresolved, already claimed, or the account has no position.
+    /// @param issueId  ID of the issue.
+    /// @param account  Address to preview the payout for.
+    /// @return         Claimable USDC amount (raw units, 6 decimals).
     function previewClaim(uint256 issueId, address account) external view returns (uint256) {
         if (!issues[issueId].resolved) return 0;
         if (claimed[issueId][account]) return 0;
@@ -243,6 +324,9 @@ contract BountyMarket is ReentrancyGuard {
     // Internal
     // -------------------------------------------------------------------------
 
+    /// @dev Compute the payout for `account` on a resolved issue.
+    ///      Valid:   YES holders share (YES_POOL_SHARE_BPS% of R + noPool) pro-rata; reporter also gets REPORTER_SHARE_BPS% of R.
+    ///      Invalid: NO holders split the entire YES pool pro-rata.
     function _computePayout(uint256 issueId, address account) internal view returns (uint256) {
         Issue storage issue = issues[issueId];
         Campaign storage campaign = campaigns[issue.campaignId];

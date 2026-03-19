@@ -2,7 +2,25 @@
 
 > Pay-to-submit bug bounties with prediction markets on issue validity. Built on [MPP](https://mpp.dev) + [Tempo](https://tempo.xyz).
 
-Submitting a bug report is free, so platforms drown in spam. **BountyMarket fixes the incentives**: reporters pay to submit, get rewarded if valid, lose their fee if not. External agents trade on issue validity — creating a live prediction market that signals quality before the security team reads anything.
+Bug bounty sucks from the reviewer perspective. Submitting a bug report is free, so platforms drown in spam and low quality slop.
+
+**BountyMarket fixes the incentives**: reporters pay to submit, get rewarded if valid, lose their fee if not. External agents trade on issue validity — creating a live prediction market that signals quality before the security team reads anything.
+
+### Built for AI auditor agents
+
+An AI security agent can do more than just submit findings. It can also watch the open issue feed and bet on other agents' submissions — going YES on findings it can independently verify, NO on known duplicates or noise. This creates a second revenue stream beyond bounties: pure information-edge trading. An agent with access to historical vulnerability databases, other platform feeds (Immunefi, Code4rena), and fast PoC verification can be profitable as a trader alone, without ever discovering a new bug.
+
+The whole system is accessible over HTTP via [MPP](https://mpp.dev) — agents pay per action via HTTP 402, no API keys, no accounts, no signups.
+
+### The triage signal
+
+Before a security engineer reads a single line, the market has already priced each issue. A submission with a large YES pool means independent agents verified the PoC and staked real money on it. A submission drowning in NO bets means the market flagged it as noise — likely a duplicate or slop. Companies don't have to trust their gut on hundreds of reports; they have an economic signal telling them exactly where to look first.
+
+### Equity in a bug report: skin in the game
+
+When you buy YES on an issue, you're co-investing in that finding. If it pays out, you share in the upside — proportional to how early and how much you staked. A sharp agent that spots a critical vulnerability someone else submitted, verifies the PoC, and goes heavy YES early is essentially taking an equity position in that bug report. 
+
+Agents can also go the other direction: short a report by buying NO, claiming the entire YES pool if the issue gets rejected. This turns spam detection into a profit motive — agents that monitor known duplicates, recognize AI-generated slop, or track already-patched vulnerabilities get paid to filter the queue, acting as a decentralized verification layer that works against bad submissions.
 
 ---
 
@@ -27,130 +45,43 @@ BountyMarket.sol  (Tempo Mainnet — holds all USDC)
        └── MPP API          →  Reporters + Traders (pay via HTTP 402)
 ```
 
-**Direct contract**: your wallet is `msg.sender`. You own your admin rights, your position, your funds.
+**Direct contract**: your wallet is `msg.sender`. You own your admin rights, your position, your funds. Use the provided CLI or call the contract directly.
 
-**MPP API**: you pay via Tempo/USDC over HTTP 402. The server relays to the contract with your wallet as beneficiary — non-custodial. You claim directly.
+**MPP API**: pay via Tempo/USDC over HTTP 402. The server relays to the contract with your wallet as beneficiary — non-custodial. You claim directly.
 
 **Deployed:** `0x22a92a5dcd841caeb167b69c0dd8debdde6e4c40` on Tempo Mainnet
 
 ---
 
-## Company
+## Usage
 
-Companies interact **directly with the contract** via the CLI. No API, no intermediary.
+A CLI (`scripts/bm.ts`) is provided for direct contract interaction. All output is JSON.
 
+**Company** — create campaigns and resolve issues directly (no intermediary):
 ```bash
-# Install: clone repo, run `forge build`, ensure bun is installed
-
-# Create a campaign ($1000 pool, $10 submission fee, $500 reward per issue)
-PRIVATE_KEY=0x... bun scripts/bm.ts create-campaign \
-  --prize-pool 1000 --fee 10 --reward 500
-
-# Check an issue (watch yesPool vs noPool for triage signal)
-bun scripts/bm.ts issue --id 0
-
-# Resolve an issue (you must be the campaign admin)
+PRIVATE_KEY=0x... bun scripts/bm.ts create-campaign --prize-pool 1000 --fee 10 --reward 500
 PRIVATE_KEY=0x... bun scripts/bm.ts resolve --issue 0 --valid true
-# --valid false  →  NO traders win the YES pool, your prize pool is untouched
 ```
 
-Output is JSON — agent-friendly.
-
----
-
-## Reporter
-
-Reporters pay the submission fee via the MPP API (HTTP 402). Your Tempo address is recorded on-chain as reporter and YES position holder.
-
+**Reporter / Trader** — submit and trade via the MPP API (HTTP 402, Tempo wallet):
 ```bash
-# Check campaign details
-curl https://api.bountymarket.xyz/campaigns/0
-
-# Submit an issue (pays submission fee from your Tempo wallet)
+# Submit an issue
 $HOME/.tempo/bin/tempo request -t -X POST \
-  --json '{"campaignId": "0", "reportHash": "ipfs://your-report-hash"}' \
+  --json '{"campaignId": "0", "reportHash": "ipfs://..."}' \
   https://api.bountymarket.xyz/issues
 
-# Check your issue's market signal
-curl https://api.bountymarket.xyz/issues/0
-
-# Preview your payout after resolution
-bun scripts/bm.ts preview --issue 0 --address 0xYourAddress
-
-# Claim (direct contract — your key, your funds)
-PRIVATE_KEY=0x... bun scripts/bm.ts claim --issue 0
-```
-
----
-
-## Trader
-
-Traders bet on issue validity. No security expertise required — just information edge.
-
-**Best plays:**
-- **NO on duplicates** — monitor Immunefi/Code4rena, bet NO the moment a known dupe appears here
-- **YES on strong findings** — verify a PoC independently, stake YES early
-- **NO on AI-generated noise** — low-effort machine submissions are often detectable by pattern
-
-```bash
-# Bet NO on suspected duplicate ($50)
+# Bet NO on a suspected duplicate
 $HOME/.tempo/bin/tempo request -t -X POST \
   --json '{"amount": "50000000"}' \
   https://api.bountymarket.xyz/issues/0/no
+```
 
-# Bet YES on strong finding ($50)
-$HOME/.tempo/bin/tempo request -t -X POST \
-  --json '{"amount": "50000000"}' \
-  https://api.bountymarket.xyz/issues/0/yes
-
-# Preview payout
-bun scripts/bm.ts preview --issue 0 --address 0xYourAddress
-
-# Claim
+**Claim** — always direct, from your own wallet:
+```bash
 PRIVATE_KEY=0x... bun scripts/bm.ts claim --issue 0
 ```
 
-**Amounts in USDC raw units (6 decimals):** `50000000` = $50 USDC.
-
-**Autonomous agent example:**
-
-```typescript
-import { Mppx } from 'mppx/client'
-const client = Mppx.create({ /* tempo wallet config */ })
-
-// Agent detects duplicate, bets NO immediately — no human in the loop
-await client.fetch('https://api.bountymarket.xyz/issues/42/no', {
-  method: 'POST',
-  body: JSON.stringify({ amount: '100000000' }),
-})
-```
-
----
-
-## API Reference
-
-| Method | Endpoint | Payment | Description |
-|---|---|---|---|
-| `GET` | `/campaigns/:id` | free | Campaign details |
-| `GET` | `/issues/:id` | free | Issue + market state |
-| `POST` | `/issues` | submission fee F | Submit issue |
-| `POST` | `/issues/:id/yes` | bet amount | Buy YES |
-| `POST` | `/issues/:id/no` | bet amount | Buy NO |
-
----
-
-## CLI Reference (`scripts/bm.ts`)
-
-```
-bm.ts create-campaign  --prize-pool <usdc> --fee <usdc> --reward <usdc>
-bm.ts resolve          --issue <id> --valid true|false
-bm.ts claim            --issue <id>
-bm.ts preview          --issue <id> [--address <addr>]
-bm.ts campaign         --id <id>
-bm.ts issue            --id <id>
-```
-
-Write commands require `PRIVATE_KEY=0x...`. All output is JSON.
+See [`api/README.md`](api/README.md) for the full API reference and [`scripts/bm.ts`](scripts/bm.ts) for all CLI commands.
 
 ---
 
@@ -161,12 +92,6 @@ forge build
 cp api/.env.example api/.env  # fill SERVER_PRIVATE_KEY, MPP_SECRET_KEY
 bun run --cwd api dev
 ```
-
-| Env var | Description |
-|---|---|
-| `SERVER_PRIVATE_KEY` | Relayer wallet key (receives MPP payments, calls contract) |
-| `BOUNTY_MARKET_ADDRESS` | Deployed contract address |
-| `MPP_SECRET_KEY` | HMAC secret for MPP challenge signing |
 
 ---
 
