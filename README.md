@@ -76,3 +76,6 @@ bun run --cwd api dev
 | Contracts | Solidity 0.8.24, OpenZeppelin, Foundry |
 | API | TypeScript, Bun, Hono, mppx, viem |
 | Chain | Tempo Mainnet (chain ID 4217) |
+
+FE: https://bountymarket.vercel.app/
+BE: bountymarket-production.up.railway.app
