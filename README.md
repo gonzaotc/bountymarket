@@ -49,7 +49,7 @@ BountyMarket.sol  (Tempo Mainnet — holds all USDC)
 
 **MPP API**: pay via Tempo/USDC over HTTP 402. The server relays to the contract with your wallet as beneficiary — non-custodial. You claim directly.
 
-**Deployed:** `0x34471e7266d9dc3dc350ad6dee07120acb9c8721` on Tempo Mainnet
+**Deployed:** `0x0Abb6362735a87a9b940Bcd2b7a35ead9927E92d` on Tempo Mainnet
 
 ---
 

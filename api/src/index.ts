@@ -9,7 +9,7 @@ app.get('/', (c) =>
     name: 'BountyMarket API',
     description: 'Pay-to-submit bug bounty platform with prediction markets on issue validity.',
     note: 'Companies interact with the contract directly. This API is the MPP payment gateway for reporters and traders.',
-    contract: '0x34471e7266d9dc3dc350ad6dee07120acb9c8721',
+    contract: '0x0Abb6362735a87a9b940Bcd2b7a35ead9927E92d',
     endpoints: {
       'GET  /campaigns/:id': 'Get campaign details (free)',
       'GET  /issues/:id':    'Get issue + market state (free)',

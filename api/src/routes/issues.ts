@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { Credential } from 'mppx'
 import { mppx } from '../lib/mppx'
-import { getCampaign, getIssue, submitIssue, buyYes, buyNo, account } from '../lib/chain'
+import { getCampaign, getIssue, submitIssue, buyYes, buyNo, account, BOUNTY_MARKET_ADDRESS } from '../lib/chain'
 
 const app = new Hono()
 
@@ -57,7 +57,7 @@ app.post(
     const payer: `0x${string}` = c.get('payer')
     const receipt = await submitIssue(campaignId, payer)
 
-    const event = receipt.logs[0]
+    const event = receipt.logs.find(l => l.address.toLowerCase() === BOUNTY_MARKET_ADDRESS.toLowerCase())!
     const issueId = BigInt(event.topics[1] ?? '0x0')
 
     const mppResult = c.get('mppResult') as any

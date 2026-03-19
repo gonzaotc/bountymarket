@@ -1,42 +1,41 @@
 #!/usr/bin/env bun
 /**
- * BountyMarket CLI — direct contract interaction for companies and claimants.
+ * BountyMarket CLI
  *
  * Usage:
- *   bun scripts/bm.ts <command> [options]
+ *   bun cli/bm.ts <command> [options]
  *
- * Commands:
+ * Direct contract commands (require PRIVATE_KEY):
  *   create-campaign  --prize-pool <usdc> --fee <usdc> --reward <usdc>
  *   resolve          --issue <id> --valid true|false
  *   claim            --issue <id>
  *   preview          --issue <id> [--address <addr>]
+ *
+ * Read commands (no key required):
  *   campaign         --id <id>
  *   issue            --id <id>
  *
- * All write commands require: PRIVATE_KEY=0x... bun scripts/bm.ts ...
- * Output is JSON — pipe-friendly for agents.
+ * MPP commands (require PRIVATE_KEY, API must be running):
+ *   submit-issue     --campaign <id> --hash <reportHash> [--api <url>]
+ *   buy-yes          --issue <id> --amount <usdc> [--api <url>]
+ *   buy-no           --issue <id> --amount <usdc> [--api <url>]
  *
- * Examples:
- *   PRIVATE_KEY=0x... bun scripts/bm.ts create-campaign --prize-pool 1000 --fee 10 --reward 500
- *   PRIVATE_KEY=0x... bun scripts/bm.ts resolve --issue 0 --valid true
- *   PRIVATE_KEY=0x... bun scripts/bm.ts claim --issue 0
- *   bun scripts/bm.ts preview --issue 0 --address 0xYourAddress
- *   bun scripts/bm.ts campaign --id 0
- *   bun scripts/bm.ts issue --id 0
+ * Output is JSON — pipe-friendly for agents.
  */
 
 import { createWalletClient, createPublicClient, http, parseUnits, formatUnits, defineChain } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
+import { Mppx, tempo } from 'mppx/client'
 import { readFileSync } from 'fs'
 import path from 'path'
 
 // ── Chain + contract config ──────────────────────────────────────────────────
 
-const CONTRACT = '0x34471e7266d9dc3dc350ad6dee07120acb9c8721' as `0x${string}`
+const CONTRACT = '0x0Abb6362735a87a9b940Bcd2b7a35ead9927E92d' as `0x${string}`
 const USDC     = '0x20C000000000000000000000b9537d11c60E8b50' as `0x${string}`
 const PATH_USD = '0x20c0000000000000000000000000000000000000' as `0x${string}`
 
-const tempo = defineChain({
+const tempoChain = defineChain({
   id: 4217,
   name: 'Tempo',
   nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
@@ -55,12 +54,18 @@ const erc20Abi = [{
 
 // ── Clients ──────────────────────────────────────────────────────────────────
 
-const publicClient = createPublicClient({ chain: tempo, transport: http() })
+const publicClient = createPublicClient({ chain: tempoChain, transport: http() })
 
-function walletClient() {
+function getWalletClient() {
   if (!process.env.PRIVATE_KEY) { err('PRIVATE_KEY env var required for write commands'); process.exit(1) }
   const account = privateKeyToAccount(process.env.PRIVATE_KEY as `0x${string}`)
-  return { client: createWalletClient({ account, chain: tempo, transport: http() }), account }
+  return { client: createWalletClient({ account, chain: tempoChain, transport: http() }), account }
+}
+
+function getMppxClient() {
+  if (!process.env.PRIVATE_KEY) { err('PRIVATE_KEY env var required'); process.exit(1) }
+  const account = privateKeyToAccount(process.env.PRIVATE_KEY as `0x${string}`)
+  return Mppx.create({ methods: [tempo.charge({ account })] })
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -85,7 +90,7 @@ if (cmd === 'create-campaign') {
   const prizePool      = parseUnits(flag('--prize-pool'), 6)
   const submissionFee  = parseUnits(flag('--fee'), 6)
   const rewardPerIssue = parseUnits(flag('--reward'), 6)
-  const { client, account } = walletClient()
+  const { client, account } = getWalletClient()
   const total = prizePool + prizePool / 100n
 
   console.error(`creating campaign from ${account.address}`)
@@ -103,13 +108,14 @@ if (cmd === 'create-campaign') {
     args: [prizePool, submissionFee, rewardPerIssue], feeToken: PATH_USD,
   } as any)
   const receipt = await publicClient.waitForTransactionReceipt({ hash })
-  const campaignId = BigInt(receipt.logs[0].topics[1] ?? '0x0')
+  const log = receipt.logs.find(l => l.address.toLowerCase() === CONTRACT.toLowerCase())!
+  const campaignId = BigInt(log.topics[1] ?? '0x0')
   out({ campaignId, tx: hash, admin: account.address, prizePool: prizePool.toString(), submissionFee: submissionFee.toString(), rewardPerIssue: rewardPerIssue.toString() })
 
 } else if (cmd === 'resolve') {
   const issueId = BigInt(flag('--issue'))
   const valid   = flag('--valid') === 'true'
-  const { client, account } = walletClient()
+  const { client, account } = getWalletClient()
 
   console.error(`resolving issue ${issueId} as ${valid ? 'VALID' : 'INVALID'} from ${account.address}`)
   const hash = await client.writeContract({
@@ -121,7 +127,7 @@ if (cmd === 'create-campaign') {
 
 } else if (cmd === 'claim') {
   const issueId = BigInt(flag('--issue'))
-  const { client, account } = walletClient()
+  const { client, account } = getWalletClient()
 
   console.error(`claiming issue ${issueId} for ${account.address}`)
   const hash = await client.writeContract({
@@ -151,17 +157,65 @@ if (cmd === 'create-campaign') {
   const i = await publicClient.readContract({ address: CONTRACT, abi, functionName: 'issues', args: [id] }) as any[]
   out({ id, campaignId: i[0].toString(), reporter: i[1], yesPool: i[2].toString(), noPool: i[3].toString(), resolved: i[4], valid: i[5] })
 
+} else if (cmd === 'submit-issue') {
+  const campaignId = flag('--campaign')
+  const reportHash = flag('--hash')
+  const api = flag('--api', false) || 'http://localhost:3000'
+  const mppx = getMppxClient()
+
+  console.error(`submitting issue to campaign ${campaignId} via ${api}...`)
+  const res = await mppx.fetch(`${api}/issues`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ campaignId, reportHash }),
+  })
+  out(await res.json())
+
+} else if (cmd === 'buy-yes') {
+  const issueId = flag('--issue')
+  const amount  = parseUnits(flag('--amount'), 6).toString()
+  const api     = flag('--api', false) || 'http://localhost:3000'
+  const mppx    = getMppxClient()
+
+  console.error(`buying YES on issue ${issueId} for $${flag('--amount')} via ${api}...`)
+  const res = await mppx.fetch(`${api}/issues/${issueId}/yes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount }),
+  })
+  out(await res.json())
+
+} else if (cmd === 'buy-no') {
+  const issueId = flag('--issue')
+  const amount  = parseUnits(flag('--amount'), 6).toString()
+  const api     = flag('--api', false) || 'http://localhost:3000'
+  const mppx    = getMppxClient()
+
+  console.error(`buying NO on issue ${issueId} for $${flag('--amount')} via ${api}...`)
+  const res = await mppx.fetch(`${api}/issues/${issueId}/no`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount }),
+  })
+  out(await res.json())
+
 } else {
   console.log(`BountyMarket CLI
 
-Commands:
+Direct contract commands (require PRIVATE_KEY):
   create-campaign  --prize-pool <usdc> --fee <usdc> --reward <usdc>
   resolve          --issue <id> --valid true|false
   claim            --issue <id>
   preview          --issue <id> [--address <addr>]
+
+Read commands:
   campaign         --id <id>
   issue            --id <id>
 
-Write commands require PRIVATE_KEY env var.
+MPP commands (require PRIVATE_KEY, API must be running):
+  submit-issue     --campaign <id> --hash <reportHash> [--api <url>]
+  buy-yes          --issue <id> --amount <usdc> [--api <url>]
+  buy-no           --issue <id> --amount <usdc> [--api <url>]
+
 Output is JSON.`)
 }

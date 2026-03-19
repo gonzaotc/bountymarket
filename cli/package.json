@@ -1,0 +1,9 @@
+{
+  "name": "cli",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "mppx": "^0.4.7",
+    "viem": "^2.47.5"
+  }
+}

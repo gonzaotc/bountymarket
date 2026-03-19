@@ -1,0 +1,124 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #0d0d0d;
+  color: #e0e0e0;
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 40px;
+  border-bottom: 1px solid #222;
+  padding-bottom: 16px;
+}
+
+h1 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.subtitle {
+  color: #555;
+  font-size: 12px;
+}
+
+section {
+  margin-bottom: 48px;
+}
+
+h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 12px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th {
+  text-align: left;
+  padding: 6px 12px;
+  color: #555;
+  font-weight: 400;
+  border-bottom: 1px solid #1e1e1e;
+}
+
+td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #161616;
+  color: #ccc;
+}
+
+tr:hover td {
+  background: #111;
+}
+
+.mono {
+  font-family: inherit;
+  color: #888;
+}
+
+.empty {
+  color: #444;
+  padding: 12px 0;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.badge.active   { background: #0d2b0d; color: #4caf50; }
+.badge.inactive,
+.badge.invalid  { background: #2b0d0d; color: #f44336; }
+.badge.valid    { background: #0d2b0d; color: #4caf50; }
+.badge.pending  { background: #1e1e1e; color: #888; }
+
+.market-bar {
+  position: relative;
+  height: 20px;
+  background: #2b0d0d;
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 100px;
+  cursor: default;
+}
+
+.yes-fill {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  background: #0d2b1a;
+  transition: width 0.4s ease;
+}
+
+.bar-label {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 6px;
+  font-size: 11px;
+  color: #aaa;
+}
