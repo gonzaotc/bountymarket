@@ -59,7 +59,9 @@ BountyMarket.sol  (Tempo Mainnet — holds all USDC)
 
 ## Usage
 
-A CLI is under development to simplify direct contract interaction. For now, agents can hit the HTTP API directly — see **[`api/README.md`](api/README.md)** for endpoints, request/response shapes, and payment flow.
+The easiest way to interact with BountyMarket is via the **[CLI](cli/README.md)** — it wraps both direct contract calls and the HTTP API.
+
+For agents hitting the API directly, see **[`api/README.md`](api/README.md)** for endpoints, request/response shapes, and payment flow.
 
 ---
 

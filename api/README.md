@@ -2,19 +2,20 @@
 
 MPP payment gateway for BountyMarket. Reporters and traders pay via MPP (Tempo/USDC) — the server verifies payment, then calls the contract with the payer's wallet as the on-chain beneficiary.
 
+**Base URL:** `https://bountymarket.up.railway.app`
 **Contract:** `0x0Abb6362735a87a9b940Bcd2b7a35ead9927E92d` on Tempo Mainnet
 **Chain:** Tempo (chain ID 4217), USDC (6 decimals)
 
 ---
 
-## API Optionality
+## The API is optional
 
 The contract is the source of truth. Everything the API does can be done by calling the contract directly — the API is a convenience layer that adds MPP payment gating so agents and users can interact over standard HTTP without managing on-chain approvals themselves.
 
 **Two actions are intentionally excluded from the API and must be done directly with the contract:**
 
-- **Campaign creation** — `createCampaign(prizePool, submissionFee, rewardPerIssue)`. The caller's wallet becomes the campaign admin and the only address that can resolve issues. Going through a relayer would give the relayer admin rights over your funds. Use `scripts/bm.ts` or call the contract directly.
-- **Claiming winnings** — `claim(issueId)`. Payouts go to `msg.sender`. Since the API records your Tempo address as the on-chain beneficiary when you submit or trade, you call claim yourself — no relayer needed, no trust assumption. Use `scripts/bm.ts` or `cast send`.
+- **Campaign creation** — `createCampaign(prizePool, submissionFee, rewardPerIssue)`. The caller's wallet becomes the campaign admin and the only address that can resolve issues. Going through a relayer would give the relayer admin rights over your funds.
+- **Claiming winnings** — `claim(issueId)`. Payouts go to `msg.sender`. Since the API records your Tempo address as the on-chain beneficiary when you submit or trade, you call claim yourself — no relayer needed, no trust assumption.
 
 Everything else (submitting issues, buying YES/NO) can be done via the API **or** directly. The API just makes it one HTTP call instead of approve + contract call.
 
@@ -31,16 +32,19 @@ Every write endpoint uses MPP (Machine Payments Protocol):
 
 The payer's Tempo address is recorded on-chain as the position holder — non-custodial. Users claim directly from the contract.
 
-Using the Tempo CLI:
+Using the Tempo CLI (`-t` handles the full 402 challenge/credential flow automatically):
 ```bash
-$HOME/.tempo/bin/tempo request -t -X POST --json '<body>' <url>
+$HOME/.tempo/bin/tempo request -t -X POST --json '<body>' https://bountymarket.up.railway.app/<endpoint>
 ```
 
 Using the mppx TypeScript client:
 ```typescript
 import { Mppx } from 'mppx/client'
 const client = Mppx.create({ /* tempo wallet config */ })
-await client.fetch('<url>', { method: 'POST', body: JSON.stringify(<body>) })
+await client.fetch('https://bountymarket.up.railway.app/<endpoint>', {
+  method: 'POST',
+  body: JSON.stringify(<body>),
+})
 ```
 
 ---
@@ -50,6 +54,10 @@ await client.fetch('<url>', { method: 'POST', body: JSON.stringify(<body>) })
 ### `GET /campaigns/:id`
 
 Returns campaign details. Free.
+
+```bash
+curl https://bountymarket.up.railway.app/campaigns/0
+```
 
 **Response**
 ```json
@@ -72,6 +80,10 @@ All amounts in USDC raw units (6 decimals). `1000000000` = $1,000 USDC.
 ### `GET /issues/:id`
 
 Returns issue state including market pools. Free.
+
+```bash
+curl https://bountymarket.up.railway.app/issues/0
+```
 
 **Response**
 ```json
@@ -97,17 +109,20 @@ Use `yesPool` vs `noPool` as a triage signal — high YES volume means the marke
 
 Submit a bug report. MPP payment = campaign's `submissionFee`.
 
-The fee is paid to the server wallet via Tempo. The server calls `submitIssue` on the contract, crediting the payer's Tempo address as reporter and opening a YES position in their name.
+The server calls `submitIssue` on the contract, recording the payer's Tempo address as reporter and opening a YES position in their name.
 
 **Body**
 ```json
 {
-  "campaignId": "0",
-  "reportHash": "ipfs://bafybeig..."
+  "campaignId": "0"
 }
 ```
 
-`reportHash` is an IPFS CID or any content-addressed pointer to the report. Stored off-chain; only the hash is referenced.
+```bash
+$HOME/.tempo/bin/tempo request -t -X POST \
+  --json '{"campaignId": "0"}' \
+  https://bountymarket.up.railway.app/issues
+```
 
 **Response `201`**
 ```json
@@ -116,8 +131,6 @@ The fee is paid to the server wallet via Tempo. The server calls `submitIssue` o
   "tx": "0x..."
 }
 ```
-
-**MPP payment** equals `submissionFee` from the campaign (fetched on-chain before issuing the challenge).
 
 ---
 
@@ -135,6 +148,12 @@ On valid resolution, YES holders (including the reporter) share `YES_POOL_SHARE%
 ```
 
 Amount in USDC raw units. `50000000` = $50 USDC.
+
+```bash
+$HOME/.tempo/bin/tempo request -t -X POST \
+  --json '{"amount": "50000000"}' \
+  https://bountymarket.up.railway.app/issues/0/yes
+```
 
 **Response `200`**
 ```json
@@ -157,6 +176,12 @@ On invalid resolution, NO holders split the entire YES pool pro-rata by their sh
 {
   "amount": "50000000"
 }
+```
+
+```bash
+$HOME/.tempo/bin/tempo request -t -X POST \
+  --json '{"amount": "50000000"}' \
+  https://bountymarket.up.railway.app/issues/0/no
 ```
 
 **Response `200`**
