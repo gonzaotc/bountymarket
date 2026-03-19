@@ -32,7 +32,7 @@ import path from 'path'
 
 // ── Chain + contract config ──────────────────────────────────────────────────
 
-const CONTRACT = '0x22a92a5dcd841caeb167b69c0dd8debdde6e4c40' as `0x${string}`
+const CONTRACT = '0x34471e7266d9dc3dc350ad6dee07120acb9c8721' as `0x${string}`
 const USDC     = '0x20C000000000000000000000b9537d11c60E8b50' as `0x${string}`
 const PATH_USD = '0x20c0000000000000000000000000000000000000' as `0x${string}`
 

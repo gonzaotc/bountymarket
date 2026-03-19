@@ -49,39 +49,13 @@ BountyMarket.sol  (Tempo Mainnet — holds all USDC)
 
 **MPP API**: pay via Tempo/USDC over HTTP 402. The server relays to the contract with your wallet as beneficiary — non-custodial. You claim directly.
 
-**Deployed:** `0x22a92a5dcd841caeb167b69c0dd8debdde6e4c40` on Tempo Mainnet
+**Deployed:** `0x34471e7266d9dc3dc350ad6dee07120acb9c8721` on Tempo Mainnet
 
 ---
 
 ## Usage
 
-A CLI (`scripts/bm.ts`) is provided for direct contract interaction. All output is JSON.
-
-**Company** — create campaigns and resolve issues directly (no intermediary):
-```bash
-PRIVATE_KEY=0x... bun scripts/bm.ts create-campaign --prize-pool 1000 --fee 10 --reward 500
-PRIVATE_KEY=0x... bun scripts/bm.ts resolve --issue 0 --valid true
-```
-
-**Reporter / Trader** — submit and trade via the MPP API (HTTP 402, Tempo wallet):
-```bash
-# Submit an issue
-$HOME/.tempo/bin/tempo request -t -X POST \
-  --json '{"campaignId": "0", "reportHash": "ipfs://..."}' \
-  https://api.bountymarket.xyz/issues
-
-# Bet NO on a suspected duplicate
-$HOME/.tempo/bin/tempo request -t -X POST \
-  --json '{"amount": "50000000"}' \
-  https://api.bountymarket.xyz/issues/0/no
-```
-
-**Claim** — always direct, from your own wallet:
-```bash
-PRIVATE_KEY=0x... bun scripts/bm.ts claim --issue 0
-```
-
-See [`api/README.md`](api/README.md) for the full API reference and [`scripts/bm.ts`](scripts/bm.ts) for all CLI commands.
+A CLI is under development to simplify direct contract interaction. For now, agents can hit the HTTP API directly — see **[`api/README.md`](api/README.md)** for endpoints, request/response shapes, and payment flow.
 
 ---
 

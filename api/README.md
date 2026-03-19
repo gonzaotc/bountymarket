@@ -2,12 +2,12 @@
 
 MPP payment gateway for BountyMarket. Reporters and traders pay via MPP (Tempo/USDC) — the server verifies payment, then calls the contract with the payer's wallet as the on-chain beneficiary.
 
-**Contract:** `0x22a92a5dcd841caeb167b69c0dd8debdde6e4c40` on Tempo Mainnet
+**Contract:** `0x34471e7266d9dc3dc350ad6dee07120acb9c8721` on Tempo Mainnet
 **Chain:** Tempo (chain ID 4217), USDC (6 decimals)
 
 ---
 
-## The API is optional
+## API Optionality
 
 The contract is the source of truth. Everything the API does can be done by calling the contract directly — the API is a convenience layer that adds MPP payment gating so agents and users can interact over standard HTTP without managing on-chain approvals themselves.
 

@@ -13,7 +13,7 @@ contract Deploy is Script {
         uint256 pk = vm.envUint("PRIVATE_KEY");
 
         vm.startBroadcast(pk);
-        BountyMarket market = new BountyMarket(USDC, treasury);
+        BountyMarket market = new BountyMarket(USDC, treasury, 100, 9000, 1000);
         vm.stopBroadcast();
 
         console.log("BountyMarket deployed at:", address(market));
