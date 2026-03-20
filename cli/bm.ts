@@ -147,10 +147,30 @@ if (cmd === 'create-campaign') {
   }) as bigint
   out({ issueId, address, payout: payout.toString(), payoutUsdc: formatUnits(payout, 6) })
 
+} else if (cmd === 'campaigns') {
+  const total = await publicClient.readContract({ address: CONTRACT, abi, functionName: 'nextCampaignId' }) as bigint
+  const campaigns = await Promise.all(
+    Array.from({ length: Number(total) }, (_, i) => BigInt(i)).map(async (id) => {
+      const c = await publicClient.readContract({ address: CONTRACT, abi, functionName: 'campaigns', args: [id] }) as any[]
+      return { id: id.toString(), admin: c[0], prizePool: c[1].toString(), submissionFee: c[2].toString(), rewardPerIssue: c[3].toString(), active: c[4] }
+    })
+  )
+  out(campaigns)
+
 } else if (cmd === 'campaign') {
   const id = BigInt(flag('--id'))
   const c = await publicClient.readContract({ address: CONTRACT, abi, functionName: 'campaigns', args: [id] }) as any[]
   out({ id, admin: c[0], prizePool: c[1].toString(), submissionFee: c[2].toString(), rewardPerIssue: c[3].toString(), active: c[4] })
+
+} else if (cmd === 'issues') {
+  const total = await publicClient.readContract({ address: CONTRACT, abi, functionName: 'nextIssueId' }) as bigint
+  const issues = await Promise.all(
+    Array.from({ length: Number(total) }, (_, i) => BigInt(i)).map(async (id) => {
+      const i = await publicClient.readContract({ address: CONTRACT, abi, functionName: 'issues', args: [id] }) as any[]
+      return { id: id.toString(), campaignId: i[0].toString(), reporter: i[1], yesPool: i[2].toString(), noPool: i[3].toString(), resolved: i[4], valid: i[5] }
+    })
+  )
+  out(issues)
 
 } else if (cmd === 'issue') {
   const id = BigInt(flag('--id'))
@@ -209,7 +229,9 @@ Direct contract commands (require PRIVATE_KEY):
   preview          --issue <id> [--address <addr>]
 
 Read commands:
-  campaign         --id <id>
+  campaigns
+  campaigns        --id <id>
+  issues
   issue            --id <id>
 
 MPP commands (require PRIVATE_KEY, API must be running):

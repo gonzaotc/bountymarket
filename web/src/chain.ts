@@ -18,7 +18,7 @@ export const client = createPublicClient({
   pollingInterval: 4000,
 })
 
-export function fmt(raw: bigint) {
+export function fmt(raw: bigint | string) {
   return `$${(Number(raw) / 1e6).toFixed(2)}`
 }
 

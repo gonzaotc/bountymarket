@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { Credential } from 'mppx'
 import { mppx } from '../lib/mppx'
-import { getCampaign, getIssue, submitIssue, buyYes, buyNo, account, BOUNTY_MARKET_ADDRESS } from '../lib/chain'
+import { getCampaign, getIssue, submitIssue, buyYes, buyNo, account, BOUNTY_MARKET_ADDRESS, publicClient, abi } from '../lib/chain'
 
 const app = new Hono()
 
@@ -16,6 +16,18 @@ function payerAddress(req: Request): `0x${string}` {
   } catch {}
   return account.address
 }
+
+// GET /issues — returns all issues
+app.get('/', async (c) => {
+  const total = await publicClient.readContract({ address: BOUNTY_MARKET_ADDRESS, abi, functionName: 'nextIssueId' }) as bigint
+  const issues = await Promise.all(
+    Array.from({ length: Number(total) }, (_, i) => BigInt(i)).map(async (id) => {
+      const issue = await getIssue(id)
+      return { id: id.toString(), campaignId: issue[0].toString(), reporter: issue[1], yesPool: issue[2].toString(), noPool: issue[3].toString(), resolved: issue[4], valid: issue[5] }
+    })
+  )
+  return c.json(issues)
+})
 
 // GET /issues/:id — free
 app.get('/:id', async (c) => {
